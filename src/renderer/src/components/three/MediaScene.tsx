@@ -5,6 +5,7 @@ import { CdSpinCard } from '../media/CdSpinCard'
 import cdFrontImg from '../../assets/cdfront.png'
 import cdBackImg from '../../assets/cdback.png'
 import { formatTime, fillPercent } from '../../utils/duration'
+import { safeFileUrl } from '../../utils/safeFile'
 
 // ─── Background switcher ────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export function MediaScene() {
           frontUrl={cdFrontImg}
           backUrl={cdBackImg}
           cdStyle={project?.albumMetadata?.cdStyle ?? 'cd-r'}
-          customImageUrl={project?.albumMetadata?.cdCustomImagePath ? `file://${project.albumMetadata.cdCustomImagePath}` : undefined}
+          customImageUrl={project?.albumMetadata?.cdCustomImagePath ? safeFileUrl(project.albumMetadata.cdCustomImagePath) : undefined}
           title={project?.albumMetadata?.title}
           artist={project?.albumMetadata?.artist}
           cdTextColor={project?.albumMetadata?.cdTextColor}

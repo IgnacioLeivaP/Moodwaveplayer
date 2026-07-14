@@ -12,7 +12,7 @@ import { useI18n } from './i18n'
 
 export default function App() {
   const { t } = useI18n()
-  const { workspace, loadProject, isLoading, activeTab, journeyAdvanced } = useProjectStore()
+  const { workspace, loadProject, isLoading, activeTab, saveError } = useProjectStore()
 
   useEffect(() => { loadProject() }, [loadProject])
 
@@ -35,10 +35,10 @@ export default function App() {
           <div className="flex-1 min-h-0 overflow-hidden border-b border-border">
             <MediaScene />
           </div>
-          <div style={{ height: 196 }} className="flex-shrink-0">
+          <div className="flex-shrink-0">
             <MusicPlayer />
           </div>
-          <div style={{ height: 52, marginBottom: 115 }} className="flex-shrink-0">
+          <div style={{ height: 52 }} className="flex-shrink-0">
             <VUMeter />
           </div>
         </div>
@@ -56,7 +56,7 @@ export default function App() {
                       <rect x="8" y="8" width="24" height="24" rx="2" stroke="white" strokeWidth="1" />
                       <path d="M14 20h12M14 15h12M14 25h8" stroke="white" strokeWidth="1" strokeLinecap="round" />
                     </svg>
-                    <p className="font-mono text-[11px] tracking-[0.2em] text-text-secondary">open a project first</p>
+                    <p className="font-mono text-[11px] tracking-[0.2em] text-text-secondary">{t('app.openFirst')}</p>
                   </div>
                 )
             )}
@@ -66,7 +66,7 @@ export default function App() {
                   ? <JourneyMap readOnly />
                   : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 opacity-30">
-                      <p className="font-mono text-[11px] tracking-[0.2em] text-text-secondary">open a project first</p>
+                      <p className="font-mono text-[11px] tracking-[0.2em] text-text-secondary">{t('app.openFirst')}</p>
                     </div>
                   )
                 }
@@ -75,6 +75,21 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Save-error toast: persistent until the next successful save */}
+      {saveError && (
+        <div
+          className="fixed bottom-4 right-4 font-mono text-[11px] tracking-[0.15em] px-4 py-2.5 rounded-sm z-50"
+          style={{
+            background: '#2a0a00',
+            border: '1px solid #ff4d0060',
+            color: '#ff8050',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.6), 0 0 12px rgba(255,77,0,0.15)'
+          }}
+        >
+          {t('app.saveError')}
+        </div>
+      )}
     </div>
   )
 }

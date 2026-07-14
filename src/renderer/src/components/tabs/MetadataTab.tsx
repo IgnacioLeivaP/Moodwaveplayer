@@ -3,6 +3,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { Track, TrackMetadata, CdStyle, CdFont, MEDIUM_CONFIGS } from '../../types'
 import { formatTime } from '../../utils/duration'
 import { useI18n } from '../../i18n'
+import { safeFileUrl } from '../../utils/safeFile'
 
 // ─── Field input ──────────────────────────────────────────────────────────────
 
@@ -289,7 +290,7 @@ function CdStyleSection({
           </button>
           {cdCustomImagePath && (
             <div className="mt-2 overflow-hidden" style={{ aspectRatio: '1', borderRadius: '50%' }}>
-              <img src={`file://${cdCustomImagePath}`} alt="cd custom" className="w-full h-full object-cover" />
+              <img src={safeFileUrl(cdCustomImagePath)} alt="cd custom" className="w-full h-full object-cover" />
             </div>
           )}
         </div>
@@ -499,7 +500,7 @@ export function MetadataTab() {
             // eslint-disable-next-line tailwindcss/no-contradicting-classname
           >
             {meta.artworkPath ? (
-              <img src={`file://${meta.artworkPath}`} alt="artwork" className="w-full h-full object-cover" style={{ opacity: draggingArtwork ? 0.5 : 1 }} />
+              <img src={safeFileUrl(meta.artworkPath)} alt="artwork" className="w-full h-full object-cover" style={{ opacity: draggingArtwork ? 0.5 : 1 }} />
             ) : (
               <div className="flex flex-col items-center gap-2 select-none" style={{ opacity: draggingArtwork ? 0.6 : 0.2 }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">

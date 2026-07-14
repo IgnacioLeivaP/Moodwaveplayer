@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useProjectStore } from '../../store/projectStore'
 import { formatTime } from '../../utils/duration'
 import { connectAudio, resumeContext } from '../../utils/audioAnalyser'
+import { safeFileUrl } from '../../utils/safeFile'
+import { useI18n } from '../../i18n'
 
 const PRIMARY = '#ff4d00'
+const STORAGE_VOLUME = 'moodwave_player_volume'
 
-function toAudioUrl(path: string): string {
-  const parts = path.replace(/\\/g, '/').split('/')
-  const encoded = parts.map((p, i) =>
-    i === 0 && /^[A-Za-z]:$/.test(p) ? p : encodeURIComponent(p)
-  ).join('/')
-  return `file:///${encoded}`
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
 }
 
 function TransportButton({ label, icon, active, onClick }: { label: string; icon: React.ReactNode; active?: boolean; onClick: () => void }) {
@@ -40,13 +40,23 @@ function TransportButton({ label, icon, active, onClick }: { label: string; icon
 
 export function MusicPlayer() {
   const { project, playerTrackId, setPlayerTrack } = useProjectStore()
+  const { t } = useI18n()
   const audioRef = useRef<HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(() => {
+    const stored = Number(localStorage.getItem(STORAGE_VOLUME))
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 && localStorage.getItem(STORAGE_VOLUME) !== null ? stored : 1
+  })
 
   useEffect(() => { if (audioRef.current) connectAudio(audioRef.current) }, [])
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume
+    localStorage.setItem(STORAGE_VOLUME, String(volume))
+  }, [volume])
 
   const tracks = project ? [...project.tracks].sort((a, b) => a.side.localeCompare(b.side) || a.order - b.order) : []
   const currentTrack = tracks.find((t) => t.id === playerTrackId) ?? null
@@ -56,11 +66,11 @@ export function MusicPlayer() {
     const audio = audioRef.current
     if (!audio) return
     if (!currentTrack?.path) {
-      audio.pause(); audio.src = ''
+      audio.pause(); audio.removeAttribute('src'); audio.load()
       setIsPlaying(false); setProgress(0); setCurrentTime(0); setDuration(0)
       return
     }
-    audio.src = toAudioUrl(currentTrack.path)
+    audio.src = safeFileUrl(currentTrack.path)
     audio.load()
     setProgress(0); setCurrentTime(0); setDuration(0)
     setIsPlaying(true)
@@ -78,6 +88,18 @@ export function MusicPlayer() {
   const handleStop = () => { setIsPlaying(false); const a = audioRef.current; if (a) { a.pause(); a.currentTime = 0 }; setProgress(0); setCurrentTime(0) }
   const handlePrev = () => { if (currentIdx > 0) setPlayerTrack(tracks[currentIdx - 1].id) }
   const handleNext = () => { if (currentIdx >= 0 && currentIdx < tracks.length - 1) setPlayerTrack(tracks[currentIdx + 1].id) }
+
+  // Keyboard shortcuts: Space = play/pause, ←/→ = prev/next track
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target) || tracks.length === 0) return
+      if (e.code === 'Space') { e.preventDefault(); if (currentTrack) handlePlay() }
+      else if (e.code === 'ArrowLeft') { e.preventDefault(); handlePrev() }
+      else if (e.code === 'ArrowRight') { e.preventDefault(); handleNext() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }) // re-bound each render so handlers see current track state
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current
@@ -108,7 +130,7 @@ export function MusicPlayer() {
             <p className="font-mono text-[12px] truncate mt-0.5" style={{ color: PRIMARY }}>{currentTrack.artist}</p>
           </>
         ) : (
-          <p className="font-mono text-[13px] text-text-secondary opacity-40">click a track to preview</p>
+          <p className="font-mono text-[13px] text-text-secondary opacity-40">{t('player.clickToPreview')}</p>
         )}
         <p className="font-mono text-[11px] text-text-secondary mt-1.5 opacity-50 tabular-nums">
           {currentIdx >= 0 ? `${currentIdx + 1} / ${tracks.length}` : `- / ${tracks.length}`}
@@ -117,14 +139,14 @@ export function MusicPlayer() {
 
       {/* Transport */}
       <div className="flex flex-shrink-0" style={{ background: '#050505', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.6)' }}>
-        <TransportButton label="Previous" onClick={handlePrev} icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="2" width="2" height="10" rx="0.5" /><path d="M12 2L4 7l8 5V2z" /></svg>} />
-        <TransportButton label={isPlaying ? 'Pause' : 'Play'} active={isPlaying} onClick={handlePlay}
+        <TransportButton label={t('player.prev')} onClick={handlePrev} icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="2" width="2" height="10" rx="0.5" /><path d="M12 2L4 7l8 5V2z" /></svg>} />
+        <TransportButton label={isPlaying ? t('player.pause') : t('player.play')} active={isPlaying} onClick={handlePlay}
           icon={isPlaying
             ? <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="4" height="10" rx="1" /><rect x="8" y="2" width="4" height="10" rx="1" /></svg>
             : <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3 2l10 5-10 5V2z" /></svg>}
         />
-        <TransportButton label="Stop" onClick={handleStop} icon={<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="10" height="10" rx="1.5" /></svg>} />
-        <TransportButton label="Next" onClick={handleNext} icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="11" y="2" width="2" height="10" rx="0.5" /><path d="M2 2l8 5-8 5V2z" /></svg>} />
+        <TransportButton label={t('player.stop')} onClick={handleStop} icon={<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="10" height="10" rx="1.5" /></svg>} />
+        <TransportButton label={t('player.next')} onClick={handleNext} icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="11" y="2" width="2" height="10" rx="0.5" /><path d="M2 2l8 5-8 5V2z" /></svg>} />
       </div>
 
       {/* Progress bar */}
@@ -137,8 +159,21 @@ export function MusicPlayer() {
             style={{ width: `${progress * 100}%`, background: `linear-gradient(to right, #8b2000, ${PRIMARY})` }}
           />
         </div>
-        <div className="flex justify-between mt-1.5">
+        <div className="flex items-center justify-between mt-1.5 gap-3">
           <span className="font-mono text-[11px] text-text-secondary tabular-nums">{formatTime(currentTime)}</span>
+          {/* Volume */}
+          <div className="flex items-center gap-1.5 flex-1 min-w-0" title={t('player.volume')}>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
+              <path d="M2 4.5h2L7 2v8L4 7.5H2v-3z" fill="#888" />
+              <path d="M8.5 4a3 3 0 010 4" stroke="#888" strokeWidth="1" strokeLinecap="round" opacity={volume > 0 ? 1 : 0.25} />
+            </svg>
+            <input
+              type="range" min={0} max={1} step={0.01} value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="volume-slider flex-1 min-w-0"
+              aria-label={t('player.volume')}
+            />
+          </div>
           <span className="font-mono text-[11px] text-text-secondary tabular-nums">{formatTime(duration)}</span>
         </div>
       </div>

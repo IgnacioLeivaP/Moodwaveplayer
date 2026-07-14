@@ -2,6 +2,16 @@ const en = {
   _meta: { code: 'en', name: 'English' },
 
   'app.loading': 'LOADING...',
+  'app.openFirst': 'open a project first',
+  'app.saveError': 'SAVE FAILED — changes were not written',
+
+  'player.clickToPreview': 'click a track to preview',
+  'player.prev': 'Previous',
+  'player.play': 'Play',
+  'player.pause': 'Pause',
+  'player.stop': 'Stop',
+  'player.next': 'Next',
+  'player.volume': 'Volume',
 
   'header.closeProject': 'close project',
   'header.projectSaved': 'your project is saved',
@@ -24,6 +34,7 @@ const en = {
   'playlist.empty': 'no projects in library',
   'playlist.emptyHint': 'open a Moodwave Editor project to get started',
   'playlist.open': 'Open from PC',
+  'playlist.refresh': 'Refresh library',
 
   'metadata.album': 'ALBUM',
   'metadata.save': 'SAVE',

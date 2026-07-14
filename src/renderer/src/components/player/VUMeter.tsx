@@ -15,13 +15,14 @@ const BANDS = [
   { label: '18K',  freq: 18000 },
 ]
 
-const NUM_SEGMENTS = 12
 const PEAK_COLOR = '#e8ffcc'
+const PEAK_HOLD_MS = 800
+const PEAK_DECAY_PER_SEC = 0.6
 
 interface BandState {
   level: number
   peak: number
-  peakTimer: number
+  peakHeldUntil: number
 }
 
 function freqToBin(freq: number, fftSize: number, sampleRate: number): number {
@@ -29,7 +30,7 @@ function freqToBin(freq: number, fftSize: number, sampleRate: number): number {
 }
 
 function initBands(): BandState[] {
-  return BANDS.map(() => ({ level: 0, peak: 0, peakTimer: 0 }))
+  return BANDS.map(() => ({ level: 0, peak: 0, peakHeldUntil: 0 }))
 }
 
 export function VUMeter() {
@@ -42,9 +43,17 @@ export function VUMeter() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
 
+    let lastFrame = performance.now()
+
     const draw = () => {
-      const W = canvas.width
-      const H = canvas.height
+      const now = performance.now()
+      const dt = Math.min((now - lastFrame) / 1000, 0.1)
+      lastFrame = now
+
+      const dpr = window.devicePixelRatio || 1
+      const W = canvas.width / dpr
+      const H = canvas.height / dpr
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, W, H)
       ctx.fillStyle = '#050505'
       ctx.fillRect(0, 0, W, H)
@@ -57,7 +66,7 @@ export function VUMeter() {
         if (fftResult) {
           const { data, sampleRate, fftSize } = fftResult
           const bin = freqToBin(BANDS[i].freq, fftSize, sampleRate)
-          // average with neighbors for stability
+          // peak of neighbors for stability
           const v0 = bin > 0 ? data[bin - 1] : 0
           const v1 = data[bin]
           const v2 = bin < data.length - 1 ? data[bin + 1] : 0
@@ -69,13 +78,12 @@ export function VUMeter() {
         band.level += diff * (diff > 0 ? 0.4 : 0.12)
         band.level = Math.max(0, Math.min(1, band.level))
 
-        // Peak hold
+        // Peak hold: keep the marker in place, then decay over real time
         if (band.level > band.peak) {
           band.peak = band.level
-          band.peakTimer = 50
-        } else {
-          band.peakTimer--
-          if (band.peakTimer <= 0) band.peak = Math.max(band.level, band.peak - 0.01)
+          band.peakHeldUntil = now + PEAK_HOLD_MS
+        } else if (now >= band.peakHeldUntil) {
+          band.peak = Math.max(band.level, band.peak - PEAK_DECAY_PER_SEC * dt)
         }
       })
 
@@ -155,8 +163,9 @@ export function VUMeter() {
     const canvas = canvasRef.current
     if (!canvas) return
     const obs = new ResizeObserver(() => {
-      canvas.width = canvas.offsetWidth
-      canvas.height = canvas.offsetHeight
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = canvas.offsetWidth * dpr
+      canvas.height = canvas.offsetHeight * dpr
     })
     obs.observe(canvas)
     return () => obs.disconnect()

@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
-import { join, extname } from 'path'
+import { join, resolve } from 'path'
 import {
   readFileSync, writeFileSync, existsSync,
-  mkdirSync, readdirSync, unlinkSync, statSync
+  mkdirSync, renameSync, unlinkSync
 } from 'fs'
+import { pathToFileURL } from 'url'
 
 // ─── Paths — reads from Moodwave Editor's userData so both apps share library ──
 
@@ -25,6 +26,47 @@ function getIndexPath(): string {
   return join(getEditorDataDir(), 'projects-index.json')
 }
 
+// Write to a temp file and rename so a crash mid-write never corrupts
+// the shared library files.
+function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.${process.pid}.tmp`
+  writeFileSync(tmp, data, 'utf-8')
+  try {
+    renameSync(tmp, path)
+  } catch (err) {
+    try { unlinkSync(tmp) } catch { /* ignore */ }
+    throw err
+  }
+}
+
+// ─── safe-file allowlist ──────────────────────────────────────────────────────
+// The renderer can only read files through safe-file:// if they are referenced
+// by a project/index the main process has actually loaded.
+
+const allowedFiles = new Set<string>()
+
+function canonPath(p: string): string {
+  return resolve(p).toLowerCase()
+}
+
+function allowFile(p: unknown): void {
+  if (typeof p === 'string' && p.length > 0) allowedFiles.add(canonPath(p))
+}
+
+function allowProjectFiles(project: Record<string, unknown>): void {
+  const editions = Array.isArray(project.editions) ? project.editions as Record<string, unknown>[] : []
+  for (const edition of editions) {
+    const meta = edition.albumMetadata as Record<string, unknown> | undefined
+    allowFile(meta?.artworkPath)
+    allowFile(meta?.cdCustomImagePath)
+    const tracks = Array.isArray(edition.tracks) ? edition.tracks as Record<string, unknown>[] : []
+    for (const track of tracks) allowFile(track.path)
+  }
+  const collectionMeta = project.collectionMeta as Record<string, unknown> | undefined
+  allowFile(collectionMeta?.artworkPath)
+  allowFile(collectionMeta?.cdCustomImagePath)
+}
+
 // ─── Index helpers ────────────────────────────────────────────────────────────
 
 interface IndexEntry {
@@ -41,11 +83,15 @@ interface IndexEntry {
 function loadIndex(): IndexEntry[] {
   const p = getIndexPath()
   if (!existsSync(p)) return []
-  try { return JSON.parse(readFileSync(p, 'utf-8')) } catch { return [] }
+  try {
+    const entries = JSON.parse(readFileSync(p, 'utf-8')) as IndexEntry[]
+    for (const e of entries) allowFile(e.artworkPath)
+    return entries
+  } catch { return [] }
 }
 
 function saveIndex(entries: IndexEntry[]): void {
-  writeFileSync(getIndexPath(), JSON.stringify(entries, null, 2), 'utf-8')
+  writeFileAtomic(getIndexPath(), JSON.stringify(entries, null, 2))
 }
 
 function upsertIndex(entry: IndexEntry): void {
@@ -75,8 +121,13 @@ function buildIndexEntry(project: Record<string, unknown>): IndexEntry {
   }
 }
 
-function extractFilename(filePath: string): string {
-  return filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? 'Unknown'
+// Minimal shape check before writing anything into the shared library.
+function isValidProject(data: unknown): data is Record<string, unknown> {
+  if (!data || typeof data !== 'object') return false
+  const p = data as Record<string, unknown>
+  return typeof p.id === 'string' && p.id.length > 0 &&
+    typeof p.name === 'string' &&
+    Array.isArray(p.editions)
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
@@ -92,8 +143,7 @@ function createWindow(): void {
     backgroundColor: '#0a0a0a',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      webSecurity: false
+      sandbox: true
     }
   })
 
@@ -110,70 +160,25 @@ function createWindow(): void {
 
 function registerIpcHandlers(): void {
 
-  ipcMain.handle('dialog:openAudioFiles', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const result = await dialog.showOpenDialog(win!, {
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aiff', 'aif', 'ogg', 'm4a', 'aac', 'wma'] }]
-    })
-    return result.filePaths
-  })
-
   ipcMain.handle('dialog:openImageFile', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openFile'],
       filters: [{ name: 'Image', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }]
     })
-    return result.filePaths[0] ?? null
-  })
-
-  ipcMain.handle('dialog:openFolder', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] })
-    return result.filePaths[0] ?? null
-  })
-
-  ipcMain.handle('audio:getMetadata', async (_event, filePath: string) => {
-    try {
-      const mm = await import('music-metadata')
-      const metadata = await mm.parseFile(filePath)
-      let fileSize = 0
-      try { fileSize = statSync(filePath).size } catch { /* ignore */ }
-      return {
-        title: metadata.common.title || extractFilename(filePath),
-        artist: metadata.common.artist || 'Unknown Artist',
-        albumArtist: metadata.common.albumartist ?? null,
-        album: metadata.common.album ?? null,
-        year: metadata.common.year ?? null,
-        genre: metadata.common.genre?.[0] ?? null,
-        trackNumber: metadata.common.track?.no ?? null,
-        duration: metadata.format.duration ?? 0,
-        fileSize,
-        bpm: metadata.common.bpm ?? null,
-        replayGain: metadata.common.replaygain_track_gain?.dB ?? null
-      }
-    } catch {
-      return {
-        title: extractFilename(filePath),
-        artist: 'Unknown Artist',
-        albumArtist: null, album: null, year: null, genre: null,
-        trackNumber: null, duration: 0, fileSize: 0, bpm: null, replayGain: null
-      }
-    }
+    const path = result.filePaths[0] ?? null
+    if (path) allowFile(path)
+    return path
   })
 
   ipcMain.handle('project:save', async (_event, projectData: unknown) => {
-    const project = projectData as Record<string, unknown>
-    const id = project.id as string
-    writeFileSync(getProjectPath(id), JSON.stringify(projectData, null, 2), 'utf-8')
-    upsertIndex(buildIndexEntry(project))
-    return true
-  })
-
-  ipcMain.handle('project:saveAs', async (_event, projectData: unknown, filePath: string) => {
-    writeFileSync(filePath, JSON.stringify(projectData, null, 2), 'utf-8')
-    return true
+    if (!isValidProject(projectData)) return false
+    try {
+      writeFileAtomic(getProjectPath(projectData.id as string), JSON.stringify(projectData, null, 2))
+      upsertIndex(buildIndexEntry(projectData))
+      allowProjectFiles(projectData)
+      return true
+    } catch { return false }
   })
 
   ipcMain.handle('project:load', async () => {
@@ -186,13 +191,6 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('project:loadById', async (_event, id: string) => loadProjectById(id))
 
-  ipcMain.handle('project:delete', async (_event, id: string) => {
-    const p = getProjectPath(id)
-    if (existsSync(p)) unlinkSync(p)
-    saveIndex(loadIndex().filter((e) => e.id !== id))
-    return true
-  })
-
   ipcMain.handle('app:quit', () => app.quit())
 
   ipcMain.handle('dialog:openProjectFile', async (event) => {
@@ -202,17 +200,12 @@ function registerIpcHandlers(): void {
       filters: [{ name: 'Moodwave Project', extensions: ['rqproj'] }]
     })
     if (result.canceled || !result.filePaths[0]) return null
-    try {
-      const data = JSON.parse(readFileSync(result.filePaths[0], 'utf-8')) as Record<string, unknown>
-      if (data.id) {
-        upsertIndex(buildIndexEntry(data))
-        const destPath = getProjectPath(data.id as string)
-        if (!existsSync(destPath)) {
-          writeFileSync(destPath, JSON.stringify(data, null, 2), 'utf-8')
-        }
-      }
-      return data
-    } catch { return null }
+    return importProjectFile(result.filePaths[0])
+  })
+
+  ipcMain.handle('project:importFromPath', async (_event, filePath: string) => {
+    if (typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.rqproj')) return null
+    return importProjectFile(filePath)
   })
 
   ipcMain.handle('dialog:openJsonFile', async (event) => {
@@ -226,44 +219,85 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('dialog:saveProjectCopy', async (event, projectData: unknown, suggestedName: string) => {
+    if (!isValidProject(projectData)) return false
     const win = BrowserWindow.fromWebContents(event.sender)
     const result = await dialog.showSaveDialog(win!, {
       defaultPath: `${suggestedName}.rqproj`,
       filters: [{ name: 'Moodwave Project', extensions: ['rqproj'] }]
     })
     if (result.canceled || !result.filePath) return false
-    writeFileSync(result.filePath, JSON.stringify(projectData, null, 2), 'utf-8')
-    return true
+    try {
+      writeFileAtomic(result.filePath, JSON.stringify(projectData, null, 2))
+      return true
+    } catch { return false }
   })
 }
 
 function loadProjectById(id: string): unknown {
   const p = getProjectPath(id)
   if (!existsSync(p)) return null
-  try { return JSON.parse(readFileSync(p, 'utf-8')) } catch { return null }
+  try {
+    const data = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+    allowProjectFiles(data)
+    return data
+  } catch { return null }
+}
+
+// Import a .rqproj from an arbitrary location: register it in the shared
+// library (without overwriting an existing copy) and return its data.
+function importProjectFile(filePath: string): unknown {
+  try {
+    const data = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>
+    if (!isValidProject(data)) return null
+    upsertIndex(buildIndexEntry(data))
+    const destPath = getProjectPath(data.id as string)
+    if (!existsSync(destPath)) {
+      writeFileAtomic(destPath, JSON.stringify(data, null, 2))
+    }
+    allowProjectFiles(data)
+    return data
+  } catch { return null }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'safe-file', privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
+  { scheme: 'safe-file', privileges: { secure: true, standard: true, supportFetchAPI: true, stream: true } }
 ])
 
-app.whenReady().then(() => {
-  protocol.handle('safe-file', (request) => {
-    const raw = request.url.slice('safe-file://'.length)
-    const decoded = decodeURIComponent(raw)
-    const fileUrl = decoded.startsWith('/') ? `file://${decoded}` : `file:///${decoded}`
-    return net.fetch(fileUrl)
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
   })
 
-  registerIpcHandlers()
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+  app.whenReady().then(() => {
+    protocol.handle('safe-file', (request) => {
+      // URLs look like safe-file://local/C%3A/Users/... (see renderer's safeFileUrl)
+      const { pathname } = new URL(request.url)
+      let decoded = pathname.split('/').map(decodeURIComponent).join('/')
+      // Windows drive-letter paths arrive as "/C:/..." — strip the leading slash
+      if (/^\/[A-Za-z]:/.test(decoded)) decoded = decoded.slice(1)
+      if (!allowedFiles.has(canonPath(decoded))) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      return net.fetch(pathToFileURL(decoded).toString())
+    })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+    registerIpcHandlers()
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+}

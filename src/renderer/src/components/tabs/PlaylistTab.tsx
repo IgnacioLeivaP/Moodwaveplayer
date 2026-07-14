@@ -6,7 +6,7 @@ import { JewelCaseCard } from '../media/JewelCaseCard'
 const PRIMARY = '#ff4d00'
 
 export function PlaylistTab() {
-  const { library, workspace, loadLibrary, loadProjectById, loadProjectFromFile } = useProjectStore()
+  const { library, workspace, loadLibrary, loadProjectById, loadProjectFromFile, loadProjectFromPath } = useProjectStore()
   const { t } = useI18n()
   const [isDragging, setIsDragging] = useState(false)
 
@@ -27,9 +27,12 @@ export function PlaylistTab() {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      await loadProjectFromFile()
+    const file = Array.from(e.dataTransfer.files).find((f) => f.name.toLowerCase().endsWith('.rqproj'))
+    if (!file) return
+    const path = window.api.getPathForFile(file)
+    if (path) {
+      await loadProjectFromPath(path)
+      await loadLibrary()
     }
   }
 
@@ -47,7 +50,7 @@ export function PlaylistTab() {
           {/* Refresh */}
           <button
             onClick={loadLibrary}
-            title="Refresh library"
+            title={t('playlist.refresh')}
             className="font-mono text-[10px] tracking-[0.15em] px-2.5 py-1 rounded-sm border transition-colors"
             style={{ color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.08)' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#ccc'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.2)' }}

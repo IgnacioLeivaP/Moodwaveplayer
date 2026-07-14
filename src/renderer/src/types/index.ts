@@ -87,20 +87,16 @@ export interface Project { id: string; name: string; medium: MediumType; tracks:
 declare global {
   interface Window {
     api: {
-      openAudioFiles: () => Promise<string[]>
       openImageFile: () => Promise<string | null>
-      openFolder: () => Promise<string | null>
-      getAudioMetadata: (filePath: string) => Promise<{ title: string; artist: string; albumArtist: string | null; album: string | null; year: number | null; genre: string | null; trackNumber: number | null; duration: number; fileSize: number; bpm: number | null; replayGain: number | null }>
       saveProject: (project: unknown) => Promise<boolean>
-      saveProjectAs: (project: unknown, filePath: string) => Promise<boolean>
       loadProject: () => Promise<unknown>
       listProjects: () => Promise<ProjectIndexEntry[]>
       loadProjectById: (id: string) => Promise<unknown>
-      deleteProject: (id: string) => Promise<boolean>
       getPathForFile: (file: File) => string
       quitApp: () => Promise<void>
       saveProjectCopy: (project: unknown, suggestedName: string) => Promise<boolean>
       openProjectFile: () => Promise<unknown>
+      importProjectFromPath: (filePath: string) => Promise<unknown>
       openJsonFile: () => Promise<string | null>
     }
   }

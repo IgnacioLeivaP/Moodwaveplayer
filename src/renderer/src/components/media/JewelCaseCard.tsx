@@ -1,5 +1,6 @@
 import { ProjectIndexEntry } from '../../types'
 import { formatTime } from '../../utils/duration'
+import { safeFileUrl } from '../../utils/safeFile'
 
 interface JewelCaseCardProps {
   entry: ProjectIndexEntry
@@ -8,7 +9,7 @@ interface JewelCaseCardProps {
 }
 
 export function JewelCaseCard({ entry, onClick, isActive }: JewelCaseCardProps) {
-  const artworkSrc = entry.artworkPath ? `file://${entry.artworkPath}` : null
+  const artworkSrc = entry.artworkPath ? safeFileUrl(entry.artworkPath) : null
 
   return (
     <div

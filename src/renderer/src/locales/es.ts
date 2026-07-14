@@ -2,6 +2,16 @@ const es = {
   _meta: { code: 'es', name: 'Español' },
 
   'app.loading': 'CARGANDO...',
+  'app.openFirst': 'abre un proyecto primero',
+  'app.saveError': 'ERROR AL GUARDAR — los cambios no se escribieron',
+
+  'player.clickToPreview': 'haz clic en una pista para escucharla',
+  'player.prev': 'Anterior',
+  'player.play': 'Reproducir',
+  'player.pause': 'Pausa',
+  'player.stop': 'Detener',
+  'player.next': 'Siguiente',
+  'player.volume': 'Volumen',
 
   'header.closeProject': 'cerrar proyecto',
   'header.projectSaved': 'tu proyecto está guardado',
@@ -24,6 +34,7 @@ const es = {
   'playlist.empty': 'no hay proyectos en la biblioteca',
   'playlist.emptyHint': 'abre un proyecto de Moodwave Editor para comenzar',
   'playlist.open': 'Abrir desde el PC',
+  'playlist.refresh': 'Actualizar biblioteca',
 
   'metadata.album': 'ÁLBUM',
   'metadata.save': 'GUARDAR',
