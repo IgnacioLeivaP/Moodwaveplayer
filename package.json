@@ -1,0 +1,42 @@
+{
+  "name": "moodwave-player",
+  "version": "0.1.0",
+  "description": "Companion player for Moodwave Editor projects",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "music-metadata": "^7.14.0"
+  },
+  "devDependencies": {
+    "@react-three/drei": "^9.109.2",
+    "@react-three/fiber": "^8.17.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.167.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "electron": "^32.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^5.0.0",
+    "postcss": "^8.4.47",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.13",
+    "three": "^0.168.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "zustand": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.moodwave.player",
+    "productName": "Moodwave Player",
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "files": ["out/**/*"]
+  }
+}
